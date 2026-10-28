@@ -222,7 +222,7 @@ function App() {
             <span>Preferences</span>
           </button>
           <div className="version">
-            ClipNest Universal <span>v0.1.0</span>
+            ClipNest Universal <span>v0.1.1</span>
           </div>
         </div>
       </aside>

@@ -166,6 +166,17 @@ try {
     return tabs.find((t) => t.url?.includes('/page'))?.id;
   });
   assert.ok(tabId);
+  const [{ result: rejected }] = await page.evaluate(
+    (tabId) =>
+      chrome.scripting.executeScript({
+        target: { tabId },
+        func: () => chrome.runtime.sendMessage({ type: 'snapshot' }),
+      }),
+    tabId,
+  );
+  assert.equal(rejected.ok, false);
+  assert.match(rejected.error, /restricted to the extension interface/);
+  console.log('PASS: webpage scripts cannot issue privileged extension commands');
   await rpc({ type: 'scan', tabId });
   await waitFor(
     async () =>

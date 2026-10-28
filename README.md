@@ -2,7 +2,7 @@
 
 A local-first Chrome / Edge extension for discovering, previewing, and saving media. A single catalog combines page scanning, permitted network observations, and pasted media URLs. No backend or account is required.
 
-**Version 0.1 is an initial working release, not full Video DownloadHelper parity.** See the [compatibility matrix](docs/COMPATIBILITY.md) for exact limits and the [roadmap](docs/ROADMAP.md) for the next milestones. The original product requirements are preserved in [docs/PRODUCT-BRIEF.md](docs/PRODUCT-BRIEF.md).
+**Version 0.1.1 is an initial working release, not full Video DownloadHelper parity.** See the [compatibility matrix](docs/COMPATIBILITY.md) for exact limits and the [roadmap](docs/ROADMAP.md) for the next milestones. The original product requirements are preserved in [docs/PRODUCT-BRIEF.md](docs/PRODUCT-BRIEF.md).
 
 ## Install locally
 
@@ -32,7 +32,7 @@ npm test              # Parsers, request bounds, real assembly + FFmpeg decoding
 npm run build         # TypeScript + production extension + isolated content script
 npm run test:ui       # UI preview interactions and responsive layout
 npm run test:browser  # Real Chromium extension + generated local media + FFmpeg validation
-npm run package       # artifacts/clipnest-0.1.0.zip, ready to extract and load unpacked
+npm run package       # artifacts/clipnest-0.1.1.zip, ready to extract and load unpacked
 ```
 
 Browser integration tests require system Chromium, FFmpeg/ffprobe, and permission to launch Chromium and listen on a loopback test port. Set `CHROMIUM_PATH` if Chromium is elsewhere. Tests generate six-second media from FFmpeg's synthetic video/audio sources; they do not access third-party videos. A temporary extension copy gets permission for the fixture origin; the shipped manifest keeps host access optional. Test screenshots are written to ignored `test-results/`.

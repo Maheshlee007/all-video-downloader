@@ -2,6 +2,7 @@
 
 ## Passed in the current cloud instance
 
+- 9 message-authorization regression tests: extension tabs, side panels and offscreen pages accepted; webpage scripts, foreign extension IDs, missing URLs and malformed URLs rejected.
 - 32 core tests: URL classification/safety, HLS qualities, encryption/live/discontinuity flags, ranges, DASH templates/timelines/representations, bounded request bodies and strict range-response handling.
 - 5 assembly tests: generated six-second HLS MPEG-TS, HLS fragmented MP4, DASH video-only, DASH audio-only fixtures assembled through the same core pipeline used by the offscreen engine, independently inspected with ffprobe and fully decoded with FFmpeg; blocked streams never fetch their segments.
 - Strict TypeScript check and Vite production build.

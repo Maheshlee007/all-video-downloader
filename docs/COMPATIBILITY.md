@@ -1,6 +1,6 @@
 # Compatibility — v0.1.0
 
-The 37 core tests verify format parsing and assembly; full extension browser integration is pending because the cloud system browser blocks unpacked extensions and the dedicated test-browser host is not yet allowed. These are format-level capabilities, not a promise that every website exposing that format works. Browser checks use controlled synthetic fixtures; no third-party website compatibility is claimed.
+The 46 core tests verify format parsing and assembly; full extension browser integration is pending because the cloud system browser blocks unpacked extensions and the dedicated test-browser host is not yet allowed. These are format-level capabilities, not a promise that every website exposing that format works. Browser checks use controlled synthetic fixtures; no third-party website compatibility is claimed.
 
 | Capability                                                            | Status      | Limits / evidence                                                                                        |
 | --------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |

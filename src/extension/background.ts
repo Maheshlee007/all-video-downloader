@@ -1,3 +1,4 @@
+import { isExtensionPage } from '../core/messages';
 import type { Analysis, Candidate, Job, Request, Stream } from '../core/types';
 import { all, put, remove } from '../core/storage';
 import { candidate, classify, extensionFor, filename, isSegment, safeUrl } from '../core/url';
@@ -112,7 +113,7 @@ async function start(job: Job) {
 }
 async function handle(message: Request, sender: chrome.runtime.MessageSender): Promise<unknown> {
   // Content scripts may only report discoveries; privileged commands come from extension pages.
-  if (sender.tab && message.type !== 'detected')
+  if (message.type !== 'detected' && !isExtensionPage(sender, chrome.runtime.id))
     throw new Error('This command is restricted to the extension interface.');
   switch (message.type) {
     case 'snapshot': {
