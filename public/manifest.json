@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ClipNest Universal",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Discover, preview and save direct media and supported unencrypted HLS/DASH streams. Local-first, no account required.",
   "minimum_chrome_version": "116",
   "permissions": [

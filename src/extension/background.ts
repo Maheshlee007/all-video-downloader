@@ -1,3 +1,4 @@
+import { pageNote } from '../core/page-status';
 import { pageCandidate } from '../core/discovery';
 import { isExtensionPage } from '../core/messages';
 import type { Analysis, Candidate, Job, Request, Stream } from '../core/types';
@@ -35,7 +36,18 @@ async function analyze(url: string, title?: string): Promise<Analysis> {
   let c = candidate(url, 'url', title ? { title } : {});
   if (c.kind === 'direct') return { candidate: c, streams: [] };
   await requirePermission(c.url);
-  const response = await mediaFetch(c.url, {}, 8 * 1024 * 1024, true);
+  let response;
+  try {
+    response = await mediaFetch(c.url, {}, 8 * 1024 * 1024, true);
+  } catch (error) {
+    if (c.kind === 'page')
+      return {
+        candidate: c,
+        streams: [],
+        note: `${pageNote(c.url)} Automatic inspection failed: ${(error as Error).message}`,
+      };
+    throw error;
+  }
   const text = new TextDecoder().decode(response.data);
   const kind = classify(response.url, response.mime);
   c = { ...c, kind };
@@ -43,9 +55,7 @@ async function analyze(url: string, title?: string): Promise<Analysis> {
   if (kind === 'hls') return { candidate: c, streams: parseHls(text, response.url) };
   if (kind === 'dash') return { candidate: c, streams: parseDash(text, response.url) };
   // Dynamic webpage extraction needs player/site adapters; do not execute fetched HTML.
-  throw new Error(
-    'This is a webpage. Open it in a tab, grant site access, and play the video to detect its media requests.',
-  );
+  return { candidate: c, streams: [], note: pageNote(c.url) };
 }
 async function requirePermission(url: string) {
   if (!(await chrome.permissions.contains({ origins: [new URL(url).origin + '/*'] })))
@@ -162,10 +172,47 @@ async function handle(message: Request, sender: chrome.runtime.MessageSender): P
         target: { tabId: message.tabId, allFrames: true },
         files: ['content.js'],
       });
-      await chrome.tabs.sendMessage(message.tabId, { type: 'scan-page' }).catch(() => {});
+      await chrome.tabs
+        .sendMessage(message.tabId, { type: 'scan-page' }, { frameId: 0 })
+        .catch(() => {});
+      const frames = await chrome.scripting.executeScript({
+        target: { tabId: message.tabId, allFrames: true },
+        func: () => {
+          const media = Array.from(document.querySelectorAll<HTMLMediaElement>('video,audio'));
+          return {
+            mediaElements: media.length,
+            blobElements: media.filter((m) => m.currentSrc.startsWith('blob:')).length,
+            origins: Array.from(document.querySelectorAll<HTMLIFrameElement>('iframe')).flatMap(
+              (f) => {
+                try {
+                  const u = new URL(f.src, location.href);
+                  return /^https?:$/.test(u.protocol) ? [u.origin] : [];
+                } catch {
+                  return [];
+                }
+              },
+            ),
+          };
+        },
+      });
+      const origins = [...new Set(frames.flatMap((f) => f.result?.origins || []))];
+      const missingFrameOrigins: string[] = [];
+      for (const origin of origins)
+        if (!(await chrome.permissions.contains({ origins: [origin + '/*'] })))
+          missingFrameOrigins.push(origin);
       return {
         count: (await all<Candidate>('candidates')).filter((c) => c.tabId === message.tabId).length,
+        mediaElements: frames.reduce((n, f) => n + (f.result?.mediaElements || 0), 0),
+        blobElements: frames.reduce((n, f) => n + (f.result?.blobElements || 0), 0),
+        frameCount: origins.length,
+        missingFrameOrigins,
       };
+    }
+    case 'open-page': {
+      const url = safeUrl(message.url);
+      await requirePermission(url);
+      const tab = await chrome.tabs.create({ url, active: true });
+      return { tabId: tab.id };
     }
     case 'analyze': {
       const result = await analyze(message.url, message.title);

@@ -61,6 +61,7 @@ export interface Snapshot {
 export type Request =
   | { type: 'snapshot' }
   | { type: 'scan'; tabId: number }
+  | { type: 'open-page'; url: string }
   | { type: 'detected'; candidates: Candidate[] }
   | { type: 'analyze'; url: string; title?: string }
   | { type: 'download'; candidate: Candidate; stream?: Stream }

@@ -1,3 +1,4 @@
+import { scanSummary, type ScanReport } from '../core/page-status';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
@@ -251,7 +252,7 @@ function App() {
             <span>Preferences</span>
           </button>
           <div className="version">
-            ClipNest Universal <span>v0.1.2</span>
+            ClipNest Universal <span>v0.1.3</span>
           </div>
         </div>
       </aside>
@@ -376,15 +377,11 @@ function App() {
                         if (!current?.url || !current.id)
                           throw new Error('Open a regular webpage to scan it.');
                         await grant(safeUrl(current.url));
-                        const result = await request<{ count: number }>({
+                        const result = await request<ScanReport>({
                           type: 'scan',
                           tabId: current.id,
                         });
-                        setScanNote(
-                          result.count
-                            ? `Found ${result.count} media item(s) on this tab.`
-                            : 'No media found yet. Start playback, then scan again. Embedded players may need cross-site detection.',
-                        );
+                        setScanNote(scanSummary(result));
                       })
                     }
                   >
@@ -676,55 +673,82 @@ function App() {
         </div>
       </main>
       {analysis && (
-        <Modal title="Choose your stream" onClose={() => setAnalysis(undefined)}>
+        <Modal
+          title={analysis.candidate.kind === 'page' ? 'Open the video page' : 'Choose your stream'}
+          onClose={() => setAnalysis(undefined)}
+        >
           <p className="modal-subtitle">{analysis.candidate.title}</p>
-          <div className="stream-list">
-            {analysis.streams.map((s) => (
-              <label className={`stream-row ${selected === s.id ? 'chosen' : ''}`} key={s.id}>
-                <input
-                  type="radio"
-                  name="stream"
-                  checked={selected === s.id}
-                  onChange={() => setSelected(s.id)}
-                />
-                <div>
-                  <strong>{s.label}</strong>
-                  <small>
-                    {s.blocked ||
-                      [
-                        s.codecs,
-                        s.bandwidth ? `${Math.round(s.bandwidth / 1000)} kbps` : '',
-                        s.segments ? `${s.segments.length} segments` : 'HLS rendition',
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')}
-                  </small>
-                </div>
-                {!s.blocked && <Check size={17} />}
-              </label>
-            ))}
-          </div>
-          <button
-            className="primary wide"
-            disabled={!!busy || !analysis.streams.some((s) => s.id === selected && !s.blocked)}
-            onClick={() =>
-              void run('download', () =>
-                download(
-                  analysis.candidate,
-                  analysis.streams.find((s) => s.id === selected),
-                ),
-              )
-            }
-          >
-            <ArrowDownToLine size={16} />
-            {analysis.streams.find((s) => s.id === selected)?.segments
-              ? 'Download selected stream'
-              : 'Inspect selected quality'}
-          </button>
-          <p className="fine-print">
-            Segmented jobs run one at a time. Pause takes effect after the current segment. Keep
-            Chrome open until the file is saved.
-          </p>
+          {analysis.candidate.kind === 'page' ? (
+            <>
+              <p className="notice">{analysis.note}</p>
+              <button
+                className="primary wide"
+                disabled={!!busy}
+                onClick={() =>
+                  void run('open-page', async () => {
+                    await grant(analysis.candidate.url);
+                    await request({ type: 'open-page', url: analysis.candidate.url });
+                    setAnalysis(undefined);
+                    setScope('tab');
+                    setView('detected');
+                    setScanNote('Page opened. Start its video, then click Scan page.');
+                  })
+                }
+              >
+                <ExternalLink size={16} /> Open page for detection
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="stream-list">
+                {analysis.streams.map((s) => (
+                  <label className={`stream-row ${selected === s.id ? 'chosen' : ''}`} key={s.id}>
+                    <input
+                      type="radio"
+                      name="stream"
+                      checked={selected === s.id}
+                      onChange={() => setSelected(s.id)}
+                    />
+                    <div>
+                      <strong>{s.label}</strong>
+                      <small>
+                        {s.blocked ||
+                          [
+                            s.codecs,
+                            s.bandwidth ? `${Math.round(s.bandwidth / 1000)} kbps` : '',
+                            s.segments ? `${s.segments.length} segments` : 'HLS rendition',
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                      </small>
+                    </div>
+                    {!s.blocked && <Check size={17} />}
+                  </label>
+                ))}
+              </div>
+              <button
+                className="primary wide"
+                disabled={!!busy || !analysis.streams.some((s) => s.id === selected && !s.blocked)}
+                onClick={() =>
+                  void run('download', () =>
+                    download(
+                      analysis.candidate,
+                      analysis.streams.find((s) => s.id === selected),
+                    ),
+                  )
+                }
+              >
+                <ArrowDownToLine size={16} />
+                {analysis.streams.find((s) => s.id === selected)?.segments
+                  ? 'Download selected stream'
+                  : 'Inspect selected quality'}
+              </button>
+              <p className="fine-print">
+                Segmented jobs run one at a time. Pause takes effect after the current segment. Keep
+                Chrome open until the file is saved.
+              </p>
+            </>
+          )}
         </Modal>
       )}
       {preview && (
@@ -765,7 +789,7 @@ function App() {
             </div>
           </div>
           <div className="notice">
-            v0.1.2 supports direct files, on-demand HLS with multiplexed audio (including standard
+            v0.1.3 supports direct files, on-demand HLS with multiplexed audio (including standard
             AES-128), and bounded single-track DASH. Separate audio/video merging, live recording,
             conversion, DRM and site-specific extractors are not included.
           </div>

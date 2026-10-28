@@ -100,6 +100,11 @@ await writeFile(
 );
 const server = createServer(async (req, res) => {
   try {
+    if (req.url === '/no-player') {
+      res.setHeader('Content-Type', 'text/html');
+      res.end('<!doctype html><title>Player failed to load</title>');
+      return;
+    }
     if (req.url === '/page') {
       res.setHeader('Content-Type', 'text/html');
       res.end(
@@ -260,6 +265,16 @@ try {
   );
   console.log('PASS: media in permitted cross-origin player frames is detected');
 
+  await site.goto(`${origin}/no-player`);
+  await rpc({ type: 'clear', target: 'candidates' });
+  const emptyScan = await rpc({ type: 'scan', tabId });
+  assert.equal(emptyScan.count, 0);
+  assert.equal(emptyScan.mediaElements, 0);
+  assert.equal(emptyScan.frameCount, 0);
+  const webpage = await rpc({ type: 'analyze', url: `${origin}/page` });
+  assert.equal(webpage.candidate.kind, 'page');
+  assert.match(webpage.note, /Open it/);
+  console.log('PASS: empty-player diagnosis and webpage handoff analysis');
   const direct = await rpc({
     type: 'analyze',
     url: `${origin}/direct.mp4`,
@@ -340,6 +355,15 @@ try {
   await page.getByRole('dialog').waitFor();
   await page.keyboard.press('Escape');
   assert.equal(await page.getByRole('dialog').count(), 0);
+  await page.getByLabel('Video or webpage URL').fill(`${origin}/page`);
+  await page.getByRole('button', { name: 'Analyze URL' }).click();
+  await page.getByRole('heading', { name: 'Open the video page' }).waitFor();
+  const opened = context.waitForEvent('page');
+  await page.getByRole('button', { name: 'Open page for detection' }).click();
+  const openedPage = await opened;
+  await openedPage.waitForLoadState('domcontentloaded');
+  assert.equal(openedPage.url(), `${origin}/page`);
+  console.log('PASS: pasted webpage opens a real player tab through the interface');
   assert.deepEqual(errors, []);
   console.log('PASS: URL form, responsive UI, keyboard dismissal and no page errors');
   console.log(`Browser checks passed. Temporary fixtures and downloads: ${temp}`);

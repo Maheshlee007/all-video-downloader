@@ -55,7 +55,7 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           SHORT_SHA=${GITHUB_SHA:0:12}
           TAG="v${VERSION}-${SHORT_SHA}"
-          sha256sum artifacts/*.zip > artifacts/SHA256SUMS
+          (cd artifacts && sha256sum *.zip > SHA256SUMS)
           cat > /tmp/release-notes.md <<'NOTES'
           Download the ClipNest ZIP below, extract it, open chrome://extensions, enable Developer mode, and choose Load unpacked on the extracted folder.
 
