@@ -1287,3 +1287,41 @@ video {
     width: 100%;
   }
 }
+.detection-tip {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid #344239;
+  background: #1c292155;
+  border-radius: 8px;
+  padding: 13px 15px;
+  margin: 0 0 18px;
+}
+.detection-tip > div {
+  flex: 1;
+  min-width: 0;
+}
+.detection-tip strong {
+  font-size: 11px;
+  font-weight: 500;
+  color: #b3d5c2;
+}
+.detection-tip p {
+  font-size: 10px;
+  line-height: 1.8;
+  color: #8b9e94;
+  margin: 5px 0 0;
+}
+.detection-tip button {
+  flex-shrink: 0;
+}
+@media (max-width: 700px) {
+  .detection-tip {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .detection-tip button {
+    font-size: 10px;
+  }
+}

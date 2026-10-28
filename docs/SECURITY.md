@@ -1,14 +1,14 @@
 # Security and privacy
 
 - Media processing stays on-device. No analytics, remote execution, account, application server, or telemetry.
-- Host access is optional and requested per origin. Granted sites permit scanning and response-header observation; no response-body interception API is used. Permission revocation updates registered content scripts.
+- Host access is optional. Per-origin mode is the default; the user can explicitly grant all HTTP/HTTPS origins for cross-site frame and CDN discovery. The tabs permission reads active-page metadata so the persistent panel follows navigation. Granted sites permit scanning and response-header observation; no response-body interception API is used. Permission revocation updates registered content scripts.
 - All executable code is packaged. MV3 extension CSP permits only self-hosted scripts and objects. No remote code, eval, or dynamically fetched executable binary is used.
 - Content scripts can only submit detections. The worker refuses privileged commands from tab senders. External extension messaging is not enabled.
 - Page text uses React text rendering, never innerHTML. URL values accept only HTTP(S), reject embedded credentials, and reject obvious private/local numeric addresses and names. Fragments are removed while signed queries are retained.
 - Hostname checks **cannot prove a DNS target is public**: DNS rebinding or public hostnames resolving to private addresses remain a known limitation. Chrome permissions are the additional boundary. A future hardened network adapter should enforce resolved destination policy; this browser-only version does not claim complete SSRF isolation.
 - Manifest/segment fetches omit credentials, use no referrer, reject redirects, bound response sizes, use timeouts, and validate byte-range response status and length. Native downloads use Chrome's ordinary download semantics, including its browser session behavior and redirects; ClipNest does not extract or store cookies.
 - Signed URLs can contain temporary tokens. Exact URLs and metadata are persisted in local IndexedDB for detection/history. They are not sent to a ClipNest server. Use Preferences to clear detections/history and Chrome to remove downloaded files. The catalog is limited to 300 candidates; job history is retained until cleared.
-- Encrypted HLS and advertised DASH ContentProtection are rejected. DRM bypass, license acquisition and key extraction are not implemented.
+- SAMPLE-AES/non-identity HLS keys and advertised DASH ContentProtection are rejected. Standard AES-128 identity keys are fetched only from granted hosts and imported into non-extractable, in-memory WebCrypto keys; raw keys are not stored in IndexedDB. DRM bypass, license acquisition and DRM key extraction are not implemented.
 - OPFS staging is private to the extension origin. Artifacts are cleaned after completion/interruption, failed/cancelled assemblies and offscreen recovery. File size/quota constraints remain; the current model has no resumable OPFS checkpoints after browser termination.
 - Original dependencies are locked with npm integrity metadata; use npm ci. Do not disable TLS, signature, or checksum verification.
 

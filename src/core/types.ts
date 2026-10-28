@@ -14,6 +14,7 @@ export interface Candidate {
 }
 export interface Segment {
   url: string;
+  encryption?: { keyUrl: string; iv: string };
   range?: { offset: number; length: number };
 }
 export interface Stream {

@@ -19,6 +19,13 @@ export async function grant(url: string) {
 export async function activeTab() {
   if (!isExtension) return undefined;
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  return tab;
+  if (tab?.url && /^https?:/.test(tab.url)) return tab;
+  // A full-tab interface should scan the most recently used webpage, not itself.
+  const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+  return (
+    tabs
+      .filter((t) => t.url && /^https?:/.test(t.url))
+      .sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0] || tab
+  );
 }
 export const empty: Snapshot = { candidates: [], jobs: [] };

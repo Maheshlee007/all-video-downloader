@@ -1,21 +1,22 @@
 # Validation record — 2026-10-28
 
-## Passed in the current cloud instance
+## Current 0.1.2 checks
 
-- 9 message-authorization regression tests: extension tabs, side panels and offscreen pages accepted; webpage scripts, foreign extension IDs, missing URLs and malformed URLs rejected.
-- 32 core tests: URL classification/safety, HLS qualities, encryption/live/discontinuity flags, ranges, DASH templates/timelines/representations, bounded request bodies and strict range-response handling.
-- 5 assembly tests: generated six-second HLS MPEG-TS, HLS fragmented MP4, DASH video-only, DASH audio-only fixtures assembled through the same core pipeline used by the offscreen engine, independently inspected with ffprobe and fully decoded with FFmpeg; blocked streams never fetch their segments.
-- Strict TypeScript check and Vite production build.
-- Production dependency audit: no reported vulnerabilities at validation time.
+- 59 core tests passed: sender authorization, URL handling, resource/extensionless discovery, HLS/DASH parsing, AES-128 IVs/key rotation/key-format rejection, and bounded request handling.
+- Six real-media assembly tests include five generated outputs: ordinary TS HLS, AES-128 TS HLS, fragmented-MP4 HLS, DASH video and DASH audio. The same pipeline used by the offscreen engine produced files inspected with ffprobe and fully decoded by FFmpeg. The sixth check verifies blocked streams do not fetch segments.
+- Strict TypeScript and production build passed before release packaging.
+- `npm run test:ui` covers navigation, preview-only errors, dialog behavior and responsive 390px layout. Its current run result is recorded in the task report.
 
-## Browser validation
+## Full extension integration evidence
 
-Passed: `npm run test:ui` exercises the ordinary web preview: navigation, extension-only error handling, accessible dialog dismissal, desktop layout, and 390px side-panel layout. Screenshots are written to ignored `test-results/`.
+The [0.1.1 workflow, run #2](https://github.com/Maheshlee007/all-video-downloader/actions/runs/40648522604), completed successfully. Its checked-in workflow ran the real Chromium extension suite, including content detection, native direct download, HLS/DASH assembly, pause/resume, output decoding and UI checks. The public run summary reported Success and two artifacts. Detailed logs require GitHub login and were not read here.
 
-Full `npm run test:browser` is implemented but **has not completed in this cloud instance**. The system Chromium's managed policy blocks unpacked extensions. Playwright's dedicated browser download returned HTTP 403 (domain forbidden) for cdn.playwright.dev. Network additions for cdn.playwright.dev and storage.googleapis.com were saved in the environment configuration draft, along with install/start instructions. Saving the draft does not apply or publish it.
+The 0.1.2 browser suite adds extensionless source classification, extensionless URL analysis, buffered manifest recovery, cross-origin iframe discovery and real AES-128 HLS output decoding. Publication is gated on that suite succeeding in Actions. Do not infer the new run passed merely from the prior successful run; check its actual result.
 
-Therefore native Chrome download handoff, actual MV3/offscreen lifecycle, optional-permission prompts, browser pause/resume, and extension content/network detection are **not yet established by a passing browser integration run**. Core media-output tests do not substitute for those checks.
+The cloud system browser blocks unpacked extensions by managed policy, and the dedicated Playwright browser download host is still outside the applied runtime allowlist. Local full-extension tests remain blocked. Network additions and installation/startup instructions were previously saved as an environment configuration draft; saving that draft does not apply or publish it.
 
-After allowing the saved domains in environment settings, install Playwright Chromium and run the browser suite using its executable path. The suite generates its own local media, loads a temporary unpacked extension, validates detection and downloaded files, and fails on decode errors. GitHub Actions is configured to run this suite in its own runner; its outcome must be checked separately.
+## Release evidence
 
-No third-party website, store publication, fresh-task environment restoration, live recording, separate-track merging, or mobile/desktop shell has been validated.
+The previous workflow uploaded Actions artifacts only; it did not create a GitHub Release. The new release job runs only after successful validation on main, downloads that run's build artifact, and uses its scoped GitHub Actions token to publish a commit-specific preview release with ZIP and SHA-256 checksums. A local build or Git push alone is not proof publication succeeded. See the actual release job and Releases page.
+
+No YouTube, AniWave, HiAnime, similarly named mirror, DRM, separate-track merge, live recording, mobile or desktop compatibility has been established. See PLATFORM-REVIEW.md for the sources and remaining work.

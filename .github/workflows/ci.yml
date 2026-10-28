@@ -1,5 +1,11 @@
 name: Validate extension
-on: [push, pull_request]
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -26,3 +32,38 @@ jobs:
         with:
           name: browser-screenshots
           path: test-results/
+
+  release:
+    name: Publish downloadable extension
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: clipnest-extension
+          path: artifacts
+      - name: Publish versioned preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          SHORT_SHA=${GITHUB_SHA:0:12}
+          TAG="v${VERSION}-${SHORT_SHA}"
+          sha256sum artifacts/*.zip > artifacts/SHA256SUMS
+          cat > /tmp/release-notes.md <<'NOTES'
+          Download the ClipNest ZIP below, extract it, open chrome://extensions, enable Developer mode, and choose Load unpacked on the extracted folder.
+
+          This is a preview build. Core media tests and the Chromium extension integration suite passed before publication. Supported formats and website limitations are documented in README.md and docs/COMPATIBILITY.md. YouTube extraction, DRM bypass, separate audio/video merging, and live recording are not included.
+          NOTES
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/*.zip artifacts/SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" artifacts/*.zip artifacts/SHA256SUMS --target "$GITHUB_SHA" --title "ClipNest ${VERSION} preview (${SHORT_SHA})" --notes-file /tmp/release-notes.md --prerelease --repo "$GITHUB_REPOSITORY"
+          fi
+          echo "Download: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" >> "$GITHUB_STEP_SUMMARY"

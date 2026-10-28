@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, it, expect } from 'vitest';
-import { mkdtemp, readFile, open, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, open, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -60,6 +60,26 @@ beforeAll(async () => {
     join(directory, 'fmp4.m3u8'),
   ]);
   ffmpeg(['-i', join(directory, 'ts.m3u8'), '-c', 'copy', join(directory, 'source.mp4')]);
+  await writeFile(join(directory, 'key'), new Uint8Array(16).fill(73));
+  await writeFile(
+    join(directory, 'keyinfo'),
+    `https://fixtures.example.com/key\n${join(directory, 'key')}\n`,
+  );
+  ffmpeg([
+    '-i',
+    join(directory, 'source.mp4'),
+    '-c',
+    'copy',
+    '-f',
+    'hls',
+    '-hls_time',
+    '2',
+    '-hls_list_size',
+    '0',
+    '-hls_key_info_file',
+    join(directory, 'keyinfo'),
+    join(directory, 'aes.m3u8'),
+  ]);
   ffmpeg([
     '-i',
     join(directory, 'source.mp4'),
@@ -97,6 +117,7 @@ afterAll(async () => {
 describe('real media assembly and independent decoding', () => {
   it.each([
     ['ts.m3u8', ['video', 'audio']],
+    ['aes.m3u8', ['video', 'audio']],
     ['fmp4.m3u8', ['video', 'audio']],
     ['video.mpd', ['video']],
     ['audio.mpd', ['audio']],

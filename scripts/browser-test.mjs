@@ -43,6 +43,23 @@ ffmpeg([
   join(fixtures, 'media.m3u8'),
 ]);
 ffmpeg(['-i', join(fixtures, 'media.m3u8'), '-c', 'copy', join(fixtures, 'direct.mp4')]);
+await writeFile(join(fixtures, 'key'), new Uint8Array(16).fill(73));
+await writeFile(join(fixtures, 'keyinfo'), `key\n${join(fixtures, 'key')}\n`);
+ffmpeg([
+  '-i',
+  join(fixtures, 'direct.mp4'),
+  '-c',
+  'copy',
+  '-f',
+  'hls',
+  '-hls_time',
+  '2',
+  '-hls_list_size',
+  '0',
+  '-hls_key_info_file',
+  join(fixtures, 'keyinfo'),
+  join(fixtures, 'aes.m3u8'),
+]);
 ffmpeg([
   '-i',
   join(fixtures, 'direct.mp4'),
@@ -79,7 +96,7 @@ await writeFile(
 );
 await writeFile(
   join(fixtures, 'encrypted.m3u8'),
-  '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="key"\nmedia0.ts\n#EXT-X-ENDLIST\n',
+  '#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="key"\nmedia0.ts\n#EXT-X-ENDLIST\n',
 );
 const server = createServer(async (req, res) => {
   try {
@@ -90,7 +107,29 @@ const server = createServer(async (req, res) => {
       );
       return;
     }
-    const name = new URL(req.url, 'http://test').pathname.slice(1);
+    if (req.url === '/extensionless-page') {
+      res.setHeader('Content-Type', 'text/html');
+      res.end(
+        '<!doctype html><title>Extensionless player</title><video controls><source src="/stream" type="video/mp4"></video>',
+      );
+      return;
+    }
+    if (req.url === '/buffered') {
+      res.setHeader('Content-Type', 'text/html');
+      res.end(
+        '<!doctype html><title>Buffered player</title><script>fetch("/master.m3u8").then(r=>r.text()).then(()=>{window.ready=true})</script>',
+      );
+      return;
+    }
+    if (req.url === '/embedded') {
+      res.setHeader('Content-Type', 'text/html');
+      res.end(
+        `<!doctype html><title>Embedded player</title><iframe src="${playerOrigin}/page"></iframe>`,
+      );
+      return;
+    }
+    let name = new URL(req.url, 'http://test').pathname.slice(1);
+    if (name === 'stream') name = 'direct.mp4';
     if (!/^[\w.-]+$/.test(name)) {
       res.writeHead(404).end();
       return;
@@ -115,11 +154,12 @@ const server = createServer(async (req, res) => {
 });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const origin = `http://media.clipnest.test:${server.address().port}`;
+const playerOrigin = `http://player.clipnest.test:${server.address().port}`;
 const extension = join(temp, 'extension');
 await cp('dist', extension, { recursive: true });
 const manifest = JSON.parse(await readFile(join(extension, 'manifest.json'), 'utf8'));
 // Test-only permission grant. The shipped manifest continues to ask per origin.
-manifest.host_permissions = [`${origin}/*`];
+manifest.host_permissions = [`${origin}/*`, `${playerOrigin}/*`];
 await writeFile(join(extension, 'manifest.json'), JSON.stringify(manifest));
 let context;
 const errors = [];
@@ -134,7 +174,7 @@ try {
       '--no-sandbox',
       `--disable-extensions-except=${extension}`,
       `--load-extension=${extension}`,
-      '--host-resolver-rules=MAP media.clipnest.test 127.0.0.1',
+      '--host-resolver-rules=MAP media.clipnest.test 127.0.0.1, MAP player.clipnest.test 127.0.0.1',
       '--no-proxy-server',
     ],
   });
@@ -184,6 +224,42 @@ try {
     'HTML media detection',
   );
   console.log('PASS: content detection in a real Chrome extension');
+  await site.goto(`${origin}/extensionless-page`);
+  await rpc({ type: 'clear', target: 'candidates' });
+  await rpc({ type: 'scan', tabId });
+  await waitFor(
+    async () =>
+      (await rpc({ type: 'snapshot' })).candidates.some(
+        (c) => c.url === `${origin}/stream` && c.kind === 'direct' && c.source === 'page',
+      ),
+    'extensionless typed source',
+  );
+  console.log('PASS: extensionless media source retains its MIME classification');
+  const extensionless = await rpc({ type: 'analyze', url: `${origin}/stream` });
+  assert.equal(extensionless.candidate.kind, 'direct');
+  await site.goto(`${origin}/buffered`);
+  await site.waitForFunction(() => window.ready === true);
+  await rpc({ type: 'clear', target: 'candidates' });
+  await rpc({ type: 'scan', tabId });
+  await waitFor(
+    async () =>
+      (await rpc({ type: 'snapshot' })).candidates.some(
+        (c) => c.url === `${origin}/master.m3u8` && c.source === 'page',
+      ),
+    'buffered manifest recovery',
+  );
+  console.log('PASS: manifests loaded before scanning are recovered from performance entries');
+  await site.goto(`${origin}/embedded`);
+  await rpc({ type: 'scan', tabId });
+  await waitFor(
+    async () =>
+      (await rpc({ type: 'snapshot' })).candidates.some(
+        (c) => c.url === `${playerOrigin}/direct.mp4` && c.tabId === tabId,
+      ),
+    'permitted cross-origin iframe',
+  );
+  console.log('PASS: media in permitted cross-origin player frames is detected');
+
   const direct = await rpc({
     type: 'analyze',
     url: `${origin}/direct.mp4`,
@@ -224,6 +300,7 @@ try {
   console.log('PASS: direct download, codecs, duration and full decode');
   for (const [manifest, title, tracks] of [
     ['master.m3u8', 'HLS fixture', ['video', 'audio']],
+    ['aes.m3u8', 'AES-128 HLS fixture', ['video', 'audio']],
     ['video.mpd', 'DASH fixture', ['video']],
     ['audio.mpd', 'Audio fixture', ['audio']],
   ]) {
@@ -242,8 +319,8 @@ try {
     console.log(`PASS: ${title}, segment assembly and full decode`);
   }
   const blocked = await rpc({ type: 'analyze', url: `${origin}/encrypted.m3u8` });
-  assert.match(blocked.streams[0].blocked, /Encrypted/);
-  console.log('PASS: encrypted HLS blocked');
+  assert.match(blocked.streams[0].blocked, /Protected/);
+  console.log('PASS: protected SAMPLE-AES HLS blocked');
   // Run a real user interaction through the URL form, then check narrow side-panel layout.
   await page.bringToFront();
   await page.getByLabel('Video or webpage URL').fill(`${origin}/direct.mp4`);

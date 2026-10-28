@@ -1,3 +1,4 @@
+import { pageCandidate } from '../core/discovery';
 import { isExtensionPage } from '../core/messages';
 import type { Analysis, Candidate, Job, Request, Stream } from '../core/types';
 import { all, put, remove } from '../core/storage';
@@ -34,13 +35,14 @@ async function analyze(url: string, title?: string): Promise<Analysis> {
   let c = candidate(url, 'url', title ? { title } : {});
   if (c.kind === 'direct') return { candidate: c, streams: [] };
   await requirePermission(c.url);
-  const response = await mediaFetch(c.url);
+  const response = await mediaFetch(c.url, {}, 8 * 1024 * 1024, true);
   const text = new TextDecoder().decode(response.data);
   const kind = classify(response.url, response.mime);
   c = { ...c, kind };
+  if (kind === 'direct') return { candidate: c, streams: [] };
   if (kind === 'hls') return { candidate: c, streams: parseHls(text, response.url) };
   if (kind === 'dash') return { candidate: c, streams: parseDash(text, response.url) };
-  // HTML is parsed in the UI with DOMParser; never execute fetched page scripts.
+  // Dynamic webpage extraction needs player/site adapters; do not execute fetched HTML.
   throw new Error(
     'This is a webpage. Open it in a tab, grant site access, and play the video to detect its media requests.',
   );
@@ -92,9 +94,10 @@ async function start(job: Job) {
       if (stream.blocked) throw new Error(stream.blocked);
       if (!stream.segments?.length) throw new Error('No downloadable segments.');
       for (const origin of new Set(
-        [...stream.segments, ...(stream.init ? [stream.init] : [])].map(
-          (s) => new URL(s.url).origin,
-        ),
+        [...stream.segments, ...(stream.init ? [stream.init] : [])]
+          .map((s) => [s.url, ...(s.encryption ? [s.encryption.keyUrl] : [])])
+          .flat()
+          .map((url) => new URL(url).origin),
       ))
         await requirePermission(origin);
       job.stream = stream;
@@ -143,7 +146,7 @@ async function handle(message: Request, sender: chrome.runtime.MessageSender): P
     case 'detected':
       for (const raw of message.candidates.slice(0, 100))
         try {
-          const value = candidate(raw.url, 'page', {
+          const value = pageCandidate(raw.url, raw.kind, {
             title: String(raw.title || 'Detected media').slice(0, 200),
             tabId: sender.tab?.id,
             pageUrl: sender.tab?.url,
@@ -160,7 +163,9 @@ async function handle(message: Request, sender: chrome.runtime.MessageSender): P
         files: ['content.js'],
       });
       await chrome.tabs.sendMessage(message.tabId, { type: 'scan-page' }).catch(() => {});
-      return true;
+      return {
+        count: (await all<Candidate>('candidates')).filter((c) => c.tabId === message.tabId).length,
+      };
     }
     case 'analyze': {
       const result = await analyze(message.url, message.title);

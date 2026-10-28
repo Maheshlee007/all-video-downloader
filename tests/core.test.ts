@@ -65,7 +65,7 @@ describe('HLS parsing', () => {
       ),
     ).toThrow('Implicit'));
   it.each([
-    ['#EXT-X-KEY:METHOD=AES-128,URI="key"', 'Encrypted'],
+    ['#EXT-X-KEY:METHOD=SAMPLE-AES,URI="key"', 'Protected'],
     ['#EXT-X-DISCONTINUITY', 'timelines'],
   ])('flags unsupported %s', (tag, message) =>
     expect(parseHls(`#EXTM3U\n${tag}\nsegment.ts\n#EXT-X-ENDLIST`, base)[0].blocked).toContain(
@@ -176,6 +176,30 @@ describe('bounded and authenticated request handling', () => {
       await expect(
         mediaFetch('https://example.com/a', { headers: { Range: 'bytes=0-2' } }),
       ).rejects.toThrow('ignored');
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+describe('extensionless media URL analysis', () => {
+  it('classifies a direct media response from headers without buffering the entire video', async () => {
+    const original = globalThis.fetch;
+    let cancelled = false;
+    globalThis.fetch = async () =>
+      new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { headers: { 'content-type': 'video/mp4', 'content-length': '1000000000' } },
+      );
+    try {
+      const result = await mediaFetch('https://cdn.example.com/play?id=42', {}, 1024, true);
+      expect(result.mime).toBe('video/mp4');
+      expect(result.data.length).toBe(0);
+      expect(cancelled).toBe(true);
     } finally {
       globalThis.fetch = original;
     }

@@ -1,3 +1,4 @@
+import { resourceCandidates } from '../core/discovery';
 import { candidate, classify } from '../core/url';
 import type { Candidate } from '../core/types';
 // Registered only on origins the user has explicitly granted.
@@ -38,12 +39,24 @@ if (!(globalThis as any).__clipnestInstalled) {
           }),
         );
       } catch {}
+    found.push(
+      ...resourceCandidates(
+        performance.getEntriesByType('resource').map((entry) => entry.name),
+        document.title,
+        location.href,
+      ),
+    );
+    return found;
+  }
+  async function report() {
+    const found = scan();
     if (found.length)
-      void chrome.runtime.sendMessage({ type: 'detected', candidates: found }).catch(() => {});
+      await chrome.runtime.sendMessage({ type: 'detected', candidates: found }).catch(() => {});
+    return found.length;
   }
   const schedule = () => {
     clearTimeout(timer);
-    timer = setTimeout(scan, 500);
+    timer = setTimeout(() => void report(), 500);
   };
   new MutationObserver(schedule).observe(document.documentElement, {
     childList: true,
@@ -52,8 +65,15 @@ if (!(globalThis as any).__clipnestInstalled) {
     attributeFilter: ['src'],
   });
   document.addEventListener('loadedmetadata', schedule, true);
-  chrome.runtime.onMessage.addListener((m) => {
-    if (m.type === 'scan-page') scan();
+  chrome.runtime.onMessage.addListener((m, _sender, reply) => {
+    if (m.type !== 'scan-page') return;
+    report()
+      .then((count) => reply({ count }))
+      .catch((error) => reply({ error: String(error) }));
+    return true;
   });
-  scan();
+  // Also observe newly fetched manifests when the player keeps its video src as blob:.
+  const observer = new PerformanceObserver(schedule);
+  observer.observe({ type: 'resource', buffered: true });
+  void report();
 }

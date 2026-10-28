@@ -1,8 +1,9 @@
-import { safeUrl } from './url';
+import { classify, safeUrl } from './url';
 export async function mediaFetch(
   input: string,
   init: RequestInit = {},
   limit = 8 * 1024 * 1024,
+  classifyBeforeReading = false,
 ): Promise<{ data: Uint8Array; url: string; mime: string }> {
   const url = safeUrl(input);
   const controller = new AbortController();
@@ -28,6 +29,11 @@ export async function mediaFetch(
       );
     if (init.headers && new Headers(init.headers).has('Range') && response.status !== 206)
       throw new Error('The server ignored a required byte-range request.');
+    const mime = response.headers.get('content-type') || '';
+    if (classifyBeforeReading && classify(response.url || url, mime) === 'direct') {
+      await response.body?.cancel();
+      return { data: new Uint8Array(), url: response.url || url, mime };
+    }
     const length = Number(response.headers.get('content-length'));
     if (length > limit) throw new Error('Resource exceeds the supported size limit.');
     const reader = response.body?.getReader();

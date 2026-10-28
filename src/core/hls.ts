@@ -52,15 +52,41 @@ export function parseHls(text: string, url: string): Stream[] {
     previousUrl = '',
     blocked: string | undefined;
   const segments: Segment[] = [];
+  let encryption: { keyUrl: string; iv?: string } | undefined;
+  const sequenceLine = lines.find((line) => line.startsWith('#EXT-X-MEDIA-SEQUENCE:'));
+  const sequence = sequenceLine ? sequenceLine.split(':')[1] : '0';
+  if (!/^\d+$/.test(sequence)) throw new Error('Invalid HLS media sequence.');
+  function ivFor(index: number): string {
+    return encryption?.iv || (BigInt(sequence) + BigInt(index)).toString(16).padStart(32, '0');
+  }
+
   for (const line of lines) {
-    if (line.startsWith('#EXT-X-KEY:') && attributes(line).METHOD !== 'NONE')
-      blocked = 'Encrypted HLS is not supported. No DRM or encryption bypass is provided.';
+    if (line.startsWith('#EXT-X-KEY:')) {
+      const key = attributes(line);
+      encryption = undefined;
+      if (key.METHOD === 'AES-128' && (!key.KEYFORMAT || key.KEYFORMAT === 'identity')) {
+        if (key.IV && !/^0x[0-9a-f]{1,32}$/i.test(key.IV))
+          throw new Error('Invalid AES-128 initialization vector.');
+        if (!key.URI) throw new Error('AES-128 key URL is missing.');
+        encryption = {
+          keyUrl: safeUrl(key.URI, url),
+          iv: key.IV ? key.IV.slice(2).padStart(32, '0') : undefined,
+        };
+      } else if (key.METHOD !== 'NONE')
+        blocked =
+          'Protected HLS (SAMPLE-AES or non-identity keys) is not supported. No DRM bypass is provided.';
+    }
     if (line === '#EXT-X-DISCONTINUITY')
       blocked =
         'This playlist changes media timelines; discontinuity-aware merging is not available yet.';
     if (line.startsWith('#EXT-X-MAP:')) {
       const a = attributes(line);
       init = { url: safeUrl(a.URI, url) };
+      if (encryption) {
+        if (!encryption.iv)
+          throw new Error('Encrypted initialization segments require an explicit IV.');
+        init.encryption = { keyUrl: encryption.keyUrl, iv: encryption.iv };
+      }
       if (a.BYTERANGE) {
         const [length, offset] = a.BYTERANGE.split('@').map(Number);
         if (!Number.isFinite(offset))
@@ -87,7 +113,13 @@ export function parseHls(text: string, url: string): Stream[] {
           range.offset < 0)
       )
         throw new Error('Invalid playlist byte range.');
-      segments.push({ url: segmentUrl, ...(range ? { range: { ...range } } : {}) });
+      segments.push({
+        url: segmentUrl,
+        ...(range ? { range: { ...range } } : {}),
+        ...(encryption
+          ? { encryption: { keyUrl: encryption.keyUrl, iv: ivFor(segments.length) } }
+          : {}),
+      });
       previousUrl = segmentUrl;
       previousEnd = range ? range.offset + range.length : 0;
       range = undefined;

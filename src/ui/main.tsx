@@ -65,6 +65,8 @@ function App() {
   const [analysis, setAnalysis] = useState<Analysis>(),
     [selected, setSelected] = useState(''),
     [preview, setPreview] = useState<Candidate>();
+  const [crossSite, setCrossSite] = useState(false);
+  const [scanNote, setScanNote] = useState('');
   const [help, setHelp] = useState(false),
     [settings, setSettings] = useState(false),
     [batch, setBatch] = useState(false);
@@ -76,10 +78,26 @@ function App() {
     const onActivated = () => {
       void activeTab().then(setTab);
     };
-    if (isExtension) chrome.tabs.onActivated.addListener(onActivated);
+    const permissionsChanged = () => {
+      void chrome.permissions
+        .contains({ origins: ['http://*/*', 'https://*/*'] })
+        .then(setCrossSite);
+    };
+    if (isExtension) {
+      chrome.tabs.onActivated.addListener(onActivated);
+      chrome.tabs.onUpdated.addListener(onActivated);
+      chrome.permissions.onAdded.addListener(permissionsChanged);
+      chrome.permissions.onRemoved.addListener(permissionsChanged);
+      permissionsChanged();
+    }
     return () => {
       clearInterval(interval);
-      if (isExtension) chrome.tabs.onActivated.removeListener(onActivated);
+      if (isExtension) {
+        chrome.tabs.onActivated.removeListener(onActivated);
+        chrome.tabs.onUpdated.removeListener(onActivated);
+        chrome.permissions.onAdded.removeListener(permissionsChanged);
+        chrome.permissions.onRemoved.removeListener(permissionsChanged);
+      }
     };
   }, [refresh]);
   async function run(label: string, fn: () => Promise<unknown>) {
@@ -93,6 +111,15 @@ function App() {
     } finally {
       setBusy('');
     }
+  }
+  async function enableCrossSite() {
+    if (!isExtension) throw new Error('Load the built extension to enable cross-site detection.');
+    if (!(await chrome.permissions.request({ origins: ['http://*/*', 'https://*/*'] })))
+      throw new Error('Cross-site access was declined. Per-site detection is still available.');
+    setCrossSite(true);
+    setScanNote(
+      'Cross-site detection enabled. Reload the video page, start playback, then scan again.',
+    );
   }
   async function analyze(value: string, title?: string) {
     const clean = safeUrl(value);
@@ -129,6 +156,8 @@ function App() {
           stream.url,
           ...(stream.segments || []).map((s) => s.url),
           ...(stream.init ? [stream.init.url] : []),
+          ...(stream.segments || []).flatMap((s) => (s.encryption ? [s.encryption.keyUrl] : [])),
+          ...(stream.init?.encryption ? [stream.init.encryption.keyUrl] : []),
         ].map((u) => new URL(u).origin + '/*'),
       );
       if (isExtension && !(await chrome.permissions.request({ origins: [...origins] })))
@@ -222,7 +251,7 @@ function App() {
             <span>Preferences</span>
           </button>
           <div className="version">
-            ClipNest Universal <span>v0.1.1</span>
+            ClipNest Universal <span>v0.1.2</span>
           </div>
         </div>
       </aside>
@@ -342,12 +371,20 @@ function App() {
                     disabled={!!busy}
                     onClick={() =>
                       void run('scan', async () => {
-                        const current = await activeTab();
+                        const current = tab || (await activeTab());
                         setTab(current);
                         if (!current?.url || !current.id)
                           throw new Error('Open a regular webpage to scan it.');
                         await grant(safeUrl(current.url));
-                        await request({ type: 'scan', tabId: current.id });
+                        const result = await request<{ count: number }>({
+                          type: 'scan',
+                          tabId: current.id,
+                        });
+                        setScanNote(
+                          result.count
+                            ? `Found ${result.count} media item(s) on this tab.`
+                            : 'No media found yet. Start playback, then scan again. Embedded players may need cross-site detection.',
+                        );
                       })
                     }
                   >
@@ -432,6 +469,30 @@ function App() {
                   </button>
                 </div>
               )}
+              <div className="detection-tip">
+                <div>
+                  <strong>
+                    {crossSite
+                      ? 'Cross-site detection is enabled'
+                      : 'Video player hosted on another site?'}
+                  </strong>
+                  <p>
+                    {scanNote ||
+                      (crossSite
+                        ? 'Play the video to discover manifests from permitted frames and media hosts.'
+                        : 'Embedded players and streaming CDNs need their own permissions. You can enable detection across websites, or keep granting sites individually.')}
+                  </p>
+                </div>
+                {!crossSite && (
+                  <button
+                    className="secondary"
+                    disabled={!!busy}
+                    onClick={() => void run('cross-site', enableCrossSite)}
+                  >
+                    Enable cross-site detection
+                  </button>
+                )}
+              </div>
               <div className="media-grid">
                 {visible.map((c) => (
                   <article className="media-card" key={c.id}>
@@ -704,9 +765,9 @@ function App() {
             </div>
           </div>
           <div className="notice">
-            v0.1 supports direct files, unencrypted on-demand HLS with multiplexed audio, and
-            bounded single-track DASH. Separate audio/video merging, live recording, conversion, DRM
-            and site-specific extractors are not included.
+            v0.1.2 supports direct files, on-demand HLS with multiplexed audio (including standard
+            AES-128), and bounded single-track DASH. Separate audio/video merging, live recording,
+            conversion, DRM and site-specific extractors are not included.
           </div>
           <p className="fine-print">
             No service can download every video. Use ClipNest only for media you are authorized to
@@ -716,6 +777,22 @@ function App() {
       )}
       {settings && (
         <Modal title="Your space, your control." onClose={() => setSettings(false)}>
+          <div className="setting-row">
+            <div>
+              <strong>Cross-site detection</strong>
+              <p>
+                Allow discovery in embedded players and CDNs across websites. This grants access to
+                HTTP/HTTPS sites; revoke it in Chrome’s extension settings.
+              </p>
+            </div>
+            <button
+              className="secondary"
+              disabled={crossSite || !!busy}
+              onClick={() => void run('cross-site', enableCrossSite)}
+            >
+              {crossSite ? 'Enabled' : 'Enable'}
+            </button>
+          </div>
           <div className="setting-row">
             <div>
               <strong>Site permissions</strong>
